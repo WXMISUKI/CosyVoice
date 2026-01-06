@@ -42,12 +42,26 @@ def read_json_lists(list_file):
 
 
 def load_wav(wav, target_sr, min_sr=16000):
-    speech, sample_rate = torchaudio.load(wav, backend='soundfile')
-    speech = speech.mean(dim=0, keepdim=True)
-    if sample_rate != target_sr:
-        assert sample_rate >= min_sr, 'wav sample rate {} must be greater than {}'.format(sample_rate, target_sr)
-        speech = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sr)(speech)
-    return speech
+    # 尝试使用soundfile库直接加载音频，避免TorchAudio的后端问题
+    try:
+        import soundfile as sf
+        import numpy as np
+        speech, sample_rate = sf.read(wav, dtype='float32')
+        speech = torch.from_numpy(speech).unsqueeze(0)
+        if len(speech.shape) > 2:
+            speech = speech.mean(dim=0, keepdim=True)
+        if sample_rate != target_sr:
+            assert sample_rate >= min_sr, 'wav sample rate {} must be greater than {}'.format(sample_rate, target_sr)
+            speech = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sr)(speech)
+        return speech
+    except ImportError:
+        # 如果soundfile导入失败，回退到TorchAudio（不指定后端）
+        speech, sample_rate = torchaudio.load(wav)
+        speech = speech.mean(dim=0, keepdim=True)
+        if sample_rate != target_sr:
+            assert sample_rate >= min_sr, 'wav sample rate {} must be greater than {}'.format(sample_rate, target_sr)
+            speech = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sr)(speech)
+        return speech
 
 
 def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
